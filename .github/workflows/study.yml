@@ -4,18 +4,20 @@ on:
   workflow_dispatch:
     inputs:
       lessons:
-        default: 1
+        default: 5
         description: 'Number of lessons to be completed'
         required: false
         type: number
+  schedule:
+    - cron: '0 20 * * *' # Запуск каждый день в 23:00 по МСК (20:00 UTC)
 
 jobs:
   study:
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun index.js
         env:
           DUOLINGO_JWT: ${{ secrets.DUOLINGO_JWT }}
-          LESSONS: ${{ inputs.lessons }}
+          LESSONS: ${{ inputs.lessons || 5 }}
