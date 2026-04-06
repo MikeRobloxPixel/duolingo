@@ -1,127 +1,62 @@
 try {
-	process.env.LESSONS = 5;
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    process.env.LESSONS = process.env.LESSONS ?? 5; // Сразу ставим 5 уроков
 
-	const headers = {
-		"Content-Type": "application/json",
-		Authorization: `Bearer ${process.env.DUOLINGO_JWT}`,
-		"user-agent":
-			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-	};
+    const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.DUOLINGO_JWT}`,
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    };
 
-	const { sub } = JSON.parse(
-		Buffer.from(process.env.DUOLINGO_JWT.split(".")[1], "base64").toString(),
-	);
+    const { sub } = JSON.parse(Buffer.from(process.env.DUOLINGO_JWT.split(".")[1], "base64").toString());
 
-	const { fromLanguage, learningLanguage } = await fetch(
-		`https://www.duolingo.com/2017-06-30/users/${sub}?fields=fromLanguage,learningLanguage`,
-		{
-			headers,
-		},
-	).then((response) => response.json());
+    const { fromLanguage, learningLanguage } = await fetch(
+        `https://duolingo.com{sub}?fields=fromLanguage,learningLanguage`,
+        { headers }
+    ).then((res) => res.json());
 
-	let xp = 0;
-	for (let i = 0; i < process.env.LESSONS; i++) {
-		const session = await fetch(
-			"https://www.duolingo.com/2017-06-30/sessions",
-			{
-				body: JSON.stringify({
-					challengeTypes: [
-						"assist",
-						"characterIntro",
-						"characterMatch",
-						"characterPuzzle",
-						"characterSelect",
-						"characterTrace",
-						"characterWrite",
-						"completeReverseTranslation",
-						"definition",
-						"dialogue",
-						"extendedMatch",
-						"extendedListenMatch",
-						"form",
-						"freeResponse",
-						"gapFill",
-						"judge",
-						"listen",
-						"listenComplete",
-						"listenMatch",
-						"match",
-						"name",
-						"listenComprehension",
-						"listenIsolation",
-						"listenSpeak",
-						"listenTap",
-						"orderTapComplete",
-						"partialListen",
-						"partialReverseTranslate",
-						"patternTapComplete",
-						"radioBinary",
-						"radioImageSelect",
-						"radioListenMatch",
-						"radioListenRecognize",
-						"radioSelect",
-						"readComprehension",
-						"reverseAssist",
-						"sameDifferent",
-						"select",
-						"selectPronunciation",
-						"selectTranscription",
-						"svgPuzzle",
-						"syllableTap",
-						"syllableListenTap",
-						"speak",
-						"tapCloze",
-						"tapClozeTable",
-						"tapComplete",
-						"tapCompleteTable",
-						"tapDescribe",
-						"translate",
-						"transliterate",
-						"transliterationAssist",
-						"typeCloze",
-						"typeClozeTable",
-						"typeComplete",
-						"typeCompleteTable",
-						"writeComprehension",
-					],
-					fromLanguage,
-					isFinalLevel: false,
-					isV2: true,
-					juicy: true,
-					learningLanguage,
-					smartTipsVersion: 2,
-					type: "GLOBAL_PRACTICE",
-				}),
-				headers,
-				method: "POST",
-			},
-		).then((response) => response.json());
+    let totalXp = 0;
+    for (let i = 0; i < process.env.LESSONS; i++) {
+        console.log(`🚀 Начинаем урок ${i + 1}... Имитируем прохождение (30 секунд)`);
+        
+        // Ждем 30 секунд, чтобы Duolingo поверил, что мы учимся
+        await sleep(30000); 
 
-		const response = await fetch(
-			`https://www.duolingo.com/2017-06-30/sessions/${session.id}`,
-			{
-				body: JSON.stringify({
-					...session,
-					heartsLeft: 0,
-					startTime: (+new Date() - 60000) / 1000,
-					enableBonusPoints: false,
-					endTime: +new Date() / 1000,
-					failed: false,
-					maxInLessonStreak: 9,
-					shouldLearnThings: true,
-				}),
-				headers,
-				method: "PUT",
-			},
-		).then((response) => response.json());
+        const session = await fetch("https://duolingo.com", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                fromLanguage,
+                learningLanguage,
+                isFinalLevel: false,
+                isV2: true,
+                juicy: true,
+                smartTipsVersion: 2,
+                type: "GLOBAL_PRACTICE",
+            }),
+        }).then((res) => res.json());
 
-		xp += response.xpGain;
-	}
+        const response = await fetch(`https://duolingo.com/${session.id}`, {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({
+                ...session,
+                heartsLeft: 0,
+                startTime: (+new Date() - 120000) / 1000, // Сказали, что начали 2 минуты назад
+                enableBonusPoints: true,
+                endTime: +new Date() / 1000,
+                failed: false,
+                maxInLessonStreak: 15,
+                shouldLearnThings: true,
+            }),
+        }).then((res) => res.json());
 
-	console.log(`🎉 You won ${xp} XP`);
+        totalXp += response.xpGain;
+        console.log(`✅ Урок ${i + 1} завершен! Получено ${response.xpGain} XP`);
+    }
+
+    console.log(`🎉 Итого за сессию: ${totalXp} XP. Огонёк и квесты должны обновиться!`);
 } catch (error) {
-	console.log("❌ Something went wrong");
-	if (error instanceof Error) {
-		console.log(error.message);
-	}
+    console.log("❌ Ошибка! Проверь DUOLINGO_JWT в Secrets.");
+    if (error instanceof Error) console.log(error.message);
 }
