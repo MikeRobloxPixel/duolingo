@@ -1,75 +1,120 @@
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 function rand(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
+
+const LESSONS = parseInt(process.env.LESSONS || "5", 10);
+const API = "https://www.duolingo.com/2017-06-30";
 
 async function run() {
+  const jwt = process.env.DUOLINGO_JWT;
+  if (!jwt) throw new Error("DUOLINGO_JWT not set");
+
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${jwt}`,
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+  };
+
+  // --- get user info ---
+  const { sub } = JSON.parse(
+    Buffer.from(jwt.split(".")[1], "base64").toString()
+  );
+  const userRes = await fetch(
+    `${API}/users/${sub}?fields=fromLanguage,learningLanguage`,
+    { headers }
+  );
+  if (!userRes.ok) throw new Error(`User fetch failed: ${userRes.status}`);
+  const { fromLanguage, learningLanguage } = await userRes.json();
+  console.log(`📚 ${fromLanguage} → ${learningLanguage}`);
+
+  let totalXP = 0;
+
+  for (let i = 1; i <= LESSONS; i++) {
     try {
-        const jwt = process.env.DUOLINGO_JWT;
-        const headers = {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${jwt}`,
-            "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36",
-        };
+      // random pre-lesson pause (10-30s) to look human
+      if (i > 1) {
+        const gap = rand(40000, 65000);
+        console.log(`⏳ Пауза ${Math.round(gap / 1000)}с перед уроком ${i}...`);
+        await sleep(gap);
+      }
 
-        const { sub } = JSON.parse(
-            Buffer.from(jwt.split(".")[1], "base64").toString()
-        );
+      // --- create session ---
+      const sessionRes = await fetch(`${API}/sessions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          fromLanguage,
+          learningLanguage,
+          isFinalLevel: false,
+          isV2: true,
+          juicy: true,
+          challengeTypes: [
+            "assist", "characterIntro", "characterMatch",
+            "characterSelect", "completeReverseTranslation",
+            "definitionFillInTheBlank", "dialogue", "fillInTheBlank",
+            "freeResponse", "gapFill", "judge", "listen",
+            "listenComplete", "listenMatch", "match", "name",
+            "partialListen", "partialReverseTranslate", "readComprehension",
+            "reverseAssist", "reverseTranslate", "select",
+            "selectPronunciation", "selectTranscription", "speak",
+            "tapCloze", "tapComplete", "tapDescribe", "translate", "typeCloze",
+            "typeComplete",
+          ],
+          type: "GLOBAL_PRACTICE",
+        }),
+      });
 
-        const userReq = await fetch(
-            `https://duolingo.com${sub}?fields=fromLanguage,learningLanguage`,
-            { headers }
-        );
+      if (!sessionRes.ok) {
+        console.error(`❌ Урок ${i}: session POST ${sessionRes.status}`);
+        continue;
+      }
+      const session = await sessionRes.json();
 
-        const { fromLanguage, learningLanguage } = await userReq.json();
+      // --- simulate lesson duration (120-240s) ---
+      const durationMs = rand(120000, 240000);
+      const durationSec = durationMs / 1000;
+      console.log(
+        `📝 Урок ${i}/${LESSONS}: имитация ${Math.round(durationSec)}с...`
+      );
+      await sleep(durationMs);
 
-        // случайная задержка перед стартом
-        await sleep(rand(20000, 60000));
+      const now = Date.now() / 1000;
 
-        console.log("⏳ Старт сессии...");
+      // --- complete session ---
+      const putRes = await fetch(`${API}/sessions/${session.id}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          ...session,
+          heartsLeft: 0,
+          startTime: now - durationSec,
+          endTime: now,
+          enableBonusPoints: true,
+          failed: false,
+          maxInLessonStreak: rand(5, 20),
+          shouldLearnThings: true,
+        }),
+      });
 
-        const sessionReq = await fetch("https://duolingo.com", {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-                fromLanguage,
-                learningLanguage,
-                isFinalLevel: false,
-                isV2: true,
-                juicy: true,
-                type: "GLOBAL_PRACTICE",
-            }),
-        });
-
-        const session = await sessionReq.json();
-
-        const duration = rand(180000, 360000); // 3–6 минут
-
-        await sleep(rand(30000, 90000));
-
-        const finalReq = await fetch(`https://duolingo.com/${session.id}`, {
-            method: "PUT",
-            headers,
-            body: JSON.stringify({
-                ...session,
-                heartsLeft: 0,
-                startTime: (Date.now() - duration) / 1000,
-                endTime: Date.now() / 1000,
-                enableBonusPoints: true,
-                failed: false,
-                maxInLessonStreak: rand(5, 20),
-                shouldLearnThings: true,
-            }),
-        });
-
-        const result = await finalReq.json();
-
-        console.log("✅ Урок завершён. XP:", result.xpGain);
+      if (!putRes.ok) {
+        console.error(`❌ Урок ${i}: PUT ${putRes.status}`);
+        continue;
+      }
+      const result = await putRes.json();
+      const xp = result.xpGain || 0;
+      totalXP += xp;
+      console.log(`✅ Урок ${i} завершён. XP: ${xp}`);
     } catch (e) {
-        console.error("❌ Ошибка:", e);
+      console.error(`❌ Урок ${i} ошибка:`, e.message);
     }
+  }
+
+  console.log(`\n🏆 Итого: ${totalXP} XP за ${LESSONS} уроков`);
 }
 
-run();
+run().catch((e) => {
+  console.error("💀 Fatal:", e);
+  process.exit(1);
+});
