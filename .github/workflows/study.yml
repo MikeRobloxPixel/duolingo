@@ -24,3 +24,4 @@ jobs:
           DUOLINGO_JWT: ${{ secrets.DUOLINGO_JWT }}
           LESSONS: "5"
         run: bun run index.js
+.
