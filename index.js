@@ -1,4 +1,4 @@
-.const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function rand(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
