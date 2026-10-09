@@ -1,4 +1,4 @@
-name: Duolingo Study
+.name: Duolingo Study
 
 on:
   schedule:
